@@ -416,6 +416,7 @@ async def my_orders(message: types.Message):
 if __name__ == '__main__':
     import os
     from aiohttp import web
+    from aiogram import types
     
     # Получаем URL вебхука из Render
     WEBHOOK_HOST = os.getenv('RENDER_EXTERNAL_URL', 'https://your-app.onrender.com')
@@ -435,10 +436,9 @@ if __name__ == '__main__':
     
     async def webhook_handle(request):
         update = await request.json()
-        telegram.Update.de_json(update, bot)
-        Bot.set_current(dp.bot)
-        update = telegram.types.Update(**update)
-        await dp.process_update(update)
+        # Исправленная строка - используем aiogram types
+        telegram_update = types.Update(**update)
+        await dp.process_update(telegram_update)
         return web.Response()
     
     # Создаем веб-приложение
