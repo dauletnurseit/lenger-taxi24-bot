@@ -21,35 +21,28 @@ dp = Dispatcher(bot, storage=storage)
 # Валидация номера
 # ---------------------
 def validate_kz_phone(phone: str) -> tuple[bool, str]:
-    """
-    Валидирует казахстанский номер телефона.
-    Возвращает (True, очищенный_номер) или (False, "")
-    """
     phone = re.sub(r'[\s\-\(\)]', '', phone)
-    valid_codes = ['707', '775', '701', '702', '747', '705', '708', 
+    valid_codes = ['707', '775', '701', '702', '747', '705', '708',
                    '700', '776', '771', '778', '706', '777']
-    
+
     if phone.startswith('+7'):
         phone = phone[2:]
     elif phone.startswith('8'):
         phone = phone[1:]
     elif phone.startswith('7') and len(phone) == 11:
         phone = phone[1:]
-    
-    if len(phone) != 10:
+
+    if len(phone) != 10 or not phone.isdigit():
         return False, ""
-    
-    if not phone.isdigit():
-        return False, ""
-    
+
     operator_code = phone[:3]
     if operator_code not in valid_codes:
         return False, ""
-    
+
     return True, f"+7{phone}"
 
 # ---------------------
-# Состояния для FSM
+# Состояния FSM
 # ---------------------
 class OrderStates(StatesGroup):
     waiting_trip_type = State()
@@ -108,7 +101,7 @@ def rating_keyboard(order_id: int):
     return keyboard
 
 # ---------------------
-# Команда старт
+# Команда /start
 # ---------------------
 @dp.message_handler(commands=['start'], state='*')
 async def start_cmd(message: types.Message, state: FSMContext):
@@ -127,15 +120,12 @@ async def cancel_order(message: types.Message, state: FSMContext):
     await message.answer("Тапсырыс болдырылмады", reply_markup=main_menu_kb())
 
 # ---------------------
-# Приём заказа
+# Процесс заказа
 # ---------------------
 @dp.message_handler(lambda m: m.text == "🚕 Такси шақыру")
 async def start_order(message: types.Message):
     await OrderStates.waiting_trip_type.set()
-    await message.answer(
-        "Сапар түрін таңдаңыз:",
-        reply_markup=trip_type_kb()
-    )
+    await message.answer("Сапар түрін таңдаңыз:", reply_markup=trip_type_kb())
 
 @dp.message_handler(state=OrderStates.waiting_trip_type)
 async def get_trip_type(message: types.Message, state: FSMContext):
@@ -146,45 +136,28 @@ async def get_trip_type(message: types.Message, state: FSMContext):
         trip_type = "intercity"
         trip_type_text = "🌄 Қаладан тыс"
     else:
-        await message.answer(
-            "Сапар түрін таңдаңыз:",
-            reply_markup=trip_type_kb()
-        )
+        await message.answer("Сапар түрін таңдаңыз:", reply_markup=trip_type_kb())
         return
-    
+
     await state.update_data(trip_type=trip_type, trip_type_text=trip_type_text)
     await OrderStates.waiting_from.set()
-    await message.answer(
-        "Қай жерден кетесіз? (мекенжайды енгізіңіз)",
-        reply_markup=cancel_kb()
-    )
+    await message.answer("Қай жерден кетесіз? (мекенжайды енгізіңіз)", reply_markup=cancel_kb())
 
 @dp.message_handler(state=OrderStates.waiting_from)
 async def get_from_addr(message: types.Message, state: FSMContext):
     await state.update_data(from_addr=message.text)
     await OrderStates.waiting_to.set()
-    await message.answer(
-        "Қайда барасыз? (мекенжайды енгізіңіз)",
-        reply_markup=cancel_kb()
-    )
+    await message.answer("Қайда барасыз? (мекенжайды енгізіңіз)", reply_markup=cancel_kb())
 
 @dp.message_handler(state=OrderStates.waiting_to)
 async def get_to_addr(message: types.Message, state: FSMContext):
     await state.update_data(to_addr=message.text)
     await OrderStates.waiting_price.set()
-    
     data = await state.get_data()
     trip_type = data.get('trip_type', 'city')
-    
-    if trip_type == 'city':
-        price_hint = "Мысал: 500, 700, 1000"
-    else:
-        price_hint = "Мысал: 2000, 3000, 5000"
-    
+    price_hint = "Мысал: 500, 700, 1000" if trip_type == 'city' else "Мысал: 2000, 3000, 5000"
     await message.answer(
-        f"💰 Өзіңіздің баға ұсынысыңызды жазыңыз (теңгемен):\n\n"
-        f"{price_hint}\n\n"
-        f"⚠️ Жүргізушілер сіздің бағаңызды көреді және қабылдай алады немесе келіспеуі мүмкін.",
+        f"💰 Өзіңіздің баға ұсынысыңызды жазыңыз (теңгемен):\n\n{price_hint}",
         reply_markup=cancel_kb()
     )
 
@@ -192,31 +165,16 @@ async def get_to_addr(message: types.Message, state: FSMContext):
 async def get_price(message: types.Message, state: FSMContext):
     try:
         price = int(message.text.strip())
-        if price < 100:
-            await message.answer(
-                "❌ Баға тым аз! Кемінде 100 теңге енгізіңіз.",
-                reply_markup=cancel_kb()
-            )
-            return
-        if price > 100000:
-            await message.answer(
-                "❌ Баға тым жоғары! 100,000 теңгеден аспауы керек.",
-                reply_markup=cancel_kb()
-            )
-            return
+        if price < 100 or price > 100000:
+            raise ValueError
     except ValueError:
-        await message.answer(
-            "❌ Қате формат! Тек санды енгізіңіз.\nМысал: 500",
-            reply_markup=cancel_kb()
-        )
+        await message.answer("❌ Қате формат! 100-100000 теңге аралығында сан енгізіңіз.", reply_markup=cancel_kb())
         return
-    
+
     await state.update_data(price=price)
     await OrderStates.waiting_phone.set()
     await message.answer(
-        "Телефон нөміріңізді жіберіңіз:\n\n"
-        "📱 Қазақстандық нөмір: +7 707/775/701/702/747/705/708/700/776/771/778/706/777\n"
-        "Мысал: +7 701 123 45 67 немесе 8 701 123 45 67",
+        "Телефон нөміріңізді жіберіңіз:\n📱 Қазақстандық нөмір енгізіңіз.",
         reply_markup=phone_kb()
     )
 
@@ -224,237 +182,59 @@ async def get_price(message: types.Message, state: FSMContext):
 async def get_phone_contact(message: types.Message, state: FSMContext):
     phone = message.contact.phone_number
     is_valid, cleaned_phone = validate_kz_phone(phone)
-    
     if not is_valid:
-        await message.answer(
-            "❌ Қате нөмір!\n\n"
-            "Қазақстандық нөмір енгізіңіз:\n"
-            "+7 707/775/701/702/747/705/708/700/776/771/778/706/777\n\n"
-            "Мысал: +7 701 123 45 67",
-            reply_markup=phone_kb()
-        )
+        await message.answer("❌ Қате нөмір! Қайта жіберіңіз.", reply_markup=phone_kb())
         return
-    
     await process_phone(message, state, cleaned_phone)
 
 @dp.message_handler(state=OrderStates.waiting_phone)
 async def get_phone_text(message: types.Message, state: FSMContext):
     phone = message.text
     is_valid, cleaned_phone = validate_kz_phone(phone)
-    
     if not is_valid:
-        await message.answer(
-            "❌ Қате нөмір!\n\n"
-            "Қазақстандық нөмір енгізіңіз:\n"
-            "+7 707/775/701/702/747/705/708/700/776/771/778/706/777\n\n"
-            "Мысал: +7 701 123 45 67 немесе 8 701 123 45 67",
-            reply_markup=phone_kb()
-        )
+        await message.answer("❌ Қате нөмір! Қайта жіберіңіз.", reply_markup=phone_kb())
         return
-    
     await process_phone(message, state, cleaned_phone)
 
 async def process_phone(message: types.Message, state: FSMContext, phone: str):
     data = await state.get_data()
-    from_addr = data['from_addr']
-    to_addr = data['to_addr']
-    price = data['price']
-    trip_type = data.get('trip_type', 'city')
-    trip_type_text = data.get('trip_type_text', '🏙 Қала ішінде')
-    
     order_id = await db.insert_order(
-        from_addr, to_addr, price, phone, message.from_user.id, trip_type
+        data['from_addr'], data['to_addr'], data['price'], phone, message.from_user.id, data.get('trip_type', 'city')
     )
-
-    # Отправляем в группу водителей
     msg = await bot.send_message(
         GROUP_ID,
-        f"🚕 Жаңа тапсырыс #{order_id}\n"
-        f"📌 Түрі: {trip_type_text}\n\n"
-        f"📍 Қайдан: {from_addr}\n"
-        f"📍 Қайда: {to_addr}\n"
-        f"💰 Клиент ұсынысы: {price} ₸\n"
-        f"📱 Телефон: {phone}\n\n"
-        f"⚠️ Клиент өз бағасын ұсынды. Келіссеңіз - қабылдаңыз!",
+        f"🚕 Жаңа тапсырыс #{order_id}\n📍 {data['from_addr']} → {data['to_addr']}\n💰 {data['price']} ₸\n📱 {phone}",
         reply_markup=accept_keyboard(order_id)
     )
-
     await db.update_group_message_id(order_id, msg.message_id)
     await state.finish()
-    await message.answer(
-        f"✅ Тапсырыс #{order_id} жіберілді!\n\n"
-        f"📌 Сапар түрі: {trip_type_text}\n"
-        f"💰 Сіздің баға ұсынысыңыз: {price} ₸\n\n"
-        f"🚕 Тапсырысыңыз жүргізушілерге жіберілді.\n"
-        f"Күтіңіз...",
-        reply_markup=main_menu_kb()
-    )
+    await message.answer("✅ Тапсырыс жіберілді!", reply_markup=main_menu_kb())
 
 # ---------------------
-# Принятие заказа
+# Обработка callback-ов
 # ---------------------
-@dp.callback_query_handler(lambda c: c.data and c.data.startswith("accept_"))
+@dp.callback_query_handler(lambda c: c.data.startswith("accept_"))
 async def callback_accept(callback: types.CallbackQuery):
     order_id = int(callback.data.split("_")[1])
     driver_id = callback.from_user.id
     driver_name = callback.from_user.full_name or callback.from_user.username or "Жүргізуші"
-
     ok = await db.try_accept_order(order_id, driver_id)
     order = await db.get_order(order_id)
-    
-    if not order:
-        await callback.answer("Тапсырыс табылмады", show_alert=True)
+    if not order or not ok:
+        await callback.answer("Бұл тапсырыс қабылданған.", show_alert=True)
         return
-    
-    if not ok:
-        await callback.answer("Бұл тапсырысты басқа жүргізуші қабылдап қойды.", show_alert=True)
-        return
-
-    await db.register_driver(driver_id, driver_name)
-
-    # Определяем иконку типа поездки
-    trip_type_icon = "🏙" if order[9] == "city" else "🌄"
-    trip_type_text = "Қала ішінде" if order[9] == "city" else "Қаладан тыс"
-
-    # Обновляем сообщение в группе
-    try:
-        await bot.edit_message_text(
-            chat_id=GROUP_ID,
-            message_id=order[8],
-            text=f"✅ Тапсырыс #{order_id} қабылданды\n"
-                 f"🚗 Жүргізуші: {driver_name}\n"
-                 f"📌 Түрі: {trip_type_icon} {trip_type_text}\n\n"
-                 f"📍 Қайдан: {order[1]}\n"
-                 f"📍 Қайда: {order[2]}\n"
-                 f"💰 Бағасы: {order[3]} ₸"
-        )
-    except Exception as e:
-        print("Редактирование сообщения не удалось:", e)
-
-    # Уведомляем водителя
-    await bot.send_message(
-        driver_id,
-        f"✅ Сіз тапсырысты қабылдадыңыз #{order_id}\n"
-        f"📌 Түрі: {trip_type_icon} {trip_type_text}\n\n"
-        f"📍 Қайдан: {order[1]}\n"
-        f"📍 Қайда: {order[2]}\n"
-        f"💰 Бағасы: {order[3]} ₸\n"
-        f"📱 Клиенттің телефоны: {order[4]}",
-        reply_markup=complete_trip_keyboard(order_id)
-    )
-    
-    # Уведомляем пассажира
-    passenger_id = order[5]
-    await bot.send_message(
-        passenger_id,
-        f"✅ Жүргізуші табылды!\n"
-        f"🚗 {driver_name}\n"
-        f"💰 Баға: {order[3]} ₸\n\n"
-        f"Жүргізуші жолда..."
-    )
-
+    await bot.send_message(driver_id, f"✅ Сіз тапсырысты қабылдадыңыз #{order_id}")
     await callback.answer("Тапсырыс қабылданды!")
 
 # ---------------------
-# Завершение поездки
+# Запуск через polling
 # ---------------------
-@dp.callback_query_handler(lambda c: c.data and c.data.startswith("complete_"))
-async def callback_complete(callback: types.CallbackQuery):
-    order_id = int(callback.data.split("_")[1])
-    order = await db.get_order(order_id)
-    
-    if not order:
-        await callback.answer("Тапсырыс табылмады", show_alert=True)
-        return
+async def on_startup(_):
+    await db.init_db()
+    print("✅ База данных инициализирована!")
 
-    passenger_id = order[5]
-    await db.complete_order(order_id)
+async def on_shutdown(_):
+    print("🛑 Бот өшірілді.")
 
-    await callback.message.answer("✅ Сапар аяқталды! Рахмет!")
-    await callback.answer("Сапар аяқталды!")
-
-    # Просим пассажира оценить поездку
-    await bot.send_message(
-        passenger_id,
-        f"✅ Сіздің сапарыңыз аяқталды!\n"
-        "Жүргізушіні бағалаңыз:",
-        reply_markup=rating_keyboard(order_id)
-    )
-
-# ---------------------
-# Оценка водителя
-# ---------------------
-@dp.callback_query_handler(lambda c: c.data and c.data.startswith("rate_"))
-async def callback_rate(callback: types.CallbackQuery):
-    parts = callback.data.split("_")
-    order_id = int(parts[1])
-    rating = int(parts[2])
-
-    await db.set_rating(order_id, rating)
-    
-    try:
-        await callback.message.edit_text(
-            f"⭐ Рахмет! Сіз жүргізушіні {rating} ⭐ деп бағаладыңыз."
-        )
-    except:
-        await callback.message.answer(
-            f"⭐ Рахмет! Сіз жүргізушіні {rating} ⭐ деп бағаладыңыз."
-        )
-    
-    await callback.answer("Рахмет за бағалауды!")
-
-# ---------------------
-# Мои заказы (опционально)
-# ---------------------
-@dp.message_handler(lambda m: m.text == "📊 Менің тапсырыстарым")
-async def my_orders(message: types.Message):
-    await message.answer("Бұл функция әзірше жасалуда...")
-
-# ---------------------
-# Запуск
-# ---------------------
-# ---------------------
-# Запуск
-# ---------------------
 if __name__ == '__main__':
-    import os
-    from aiohttp import web
-    
-    # Получаем URL вебхука из Render
-    WEBHOOK_HOST = os.getenv('RENDER_EXTERNAL_URL', 'https://lenger-taxi24-bot.onrender.com')
-    WEBHOOK_PATH = f'/webhook/{os.getenv("BOT_TOKEN").split(":")[1]}'
-    WEBHOOK_URL = f"{WEBHOOK_HOST}{WEBHOOK_PATH}"
-    
-    # Порт для веб-сервера
-    WEBAPP_HOST = '0.0.0.0'
-    WEBAPP_PORT = int(os.getenv('PORT', 10000))
-    
-    async def on_startup(app):
-        # Инициализируем базу данных
-        await db.init_db()
-        
-        await bot.set_webhook(WEBHOOK_URL, drop_pending_updates=True)
-        print(f'Webhook set to {WEBHOOK_URL}')
-    
-    async def on_shutdown(app):
-        await bot.delete_webhook()
-    
-    async def webhook_handle(request):
-        update = await request.json()
-        telegram_update = types.Update(**update)
-        
-        # Устанавливаем текущий диспетчер
-        Dispatcher.set_current(dp)
-        Bot.set_current(bot)
-        
-        await dp.process_update(telegram_update)
-        return web.Response()
-    
-    # Создаем веб-приложение
-    app = web.Application()
-    app.router.add_post(WEBHOOK_PATH, webhook_handle)
-    app.on_startup.append(on_startup)
-    app.on_shutdown.append(on_shutdown)
-    
-    # Запускаем веб-сервер
-    web.run_app(app, host=WEBAPP_HOST, port=WEBAPP_PORT)
+    executor.start_polling(dp, skip_updates=True, on_startup=on_startup, on_shutdown=on_shutdown)
