@@ -413,8 +413,39 @@ async def my_orders(message: types.Message):
 # ---------------------
 # Запуск
 # ---------------------
-if __name__ == "__main__":
-    loop = asyncio.get_event_loop()
-    loop.run_until_complete(db.init_db())
-    print("Бот іске қосылды...")
-    executor.start_polling(dp, skip_updates=True)
+if __name__ == '__main__':
+    import os
+    from aiohttp import web
+    
+    # Получаем URL вебхука из Render
+    WEBHOOK_HOST = os.getenv('RENDER_EXTERNAL_URL', 'https://your-app.onrender.com')
+    WEBHOOK_PATH = f'/webhook/{os.getenv("BOT_TOKEN").split(":")[1]}'
+    WEBHOOK_URL = f"{WEBHOOK_HOST}{WEBHOOK_PATH}"
+    
+    # Порт для веб-сервера
+    WEBAPP_HOST = '0.0.0.0'
+    WEBAPP_PORT = int(os.getenv('PORT', 10000))
+    
+    async def on_startup(app):
+        await bot.set_webhook(WEBHOOK_URL)
+        print(f'Webhook set to {WEBHOOK_URL}')
+    
+    async def on_shutdown(app):
+        await bot.delete_webhook()
+    
+    async def webhook_handle(request):
+        update = await request.json()
+        telegram.Update.de_json(update, bot)
+        Bot.set_current(dp.bot)
+        update = telegram.types.Update(**update)
+        await dp.process_update(update)
+        return web.Response()
+    
+    # Создаем веб-приложение
+    app = web.Application()
+    app.router.add_post(WEBHOOK_PATH, webhook_handle)
+    app.on_startup.append(on_startup)
+    app.on_shutdown.append(on_shutdown)
+    
+    # Запускаем веб-сервер
+    web.run_app(app, host=WEBAPP_HOST, port=WEBAPP_PORT)
