@@ -418,6 +418,10 @@ if __name__ == '__main__':
     from aiohttp import web
     from aiogram import types
     
+if __name__ == '__main__':
+    import os
+    from aiohttp import web
+    
     # Получаем URL вебхука из Render
     WEBHOOK_HOST = os.getenv('RENDER_EXTERNAL_URL', 'https://your-app.onrender.com')
     WEBHOOK_PATH = f'/webhook/{os.getenv("BOT_TOKEN").split(":")[1]}'
@@ -428,7 +432,7 @@ if __name__ == '__main__':
     WEBAPP_PORT = int(os.getenv('PORT', 10000))
     
     async def on_startup(app):
-        await bot.set_webhook(WEBHOOK_URL)
+        await bot.set_webhook(WEBHOOK_URL, drop_pending_updates=True)
         print(f'Webhook set to {WEBHOOK_URL}')
     
     async def on_shutdown(app):
@@ -436,8 +440,12 @@ if __name__ == '__main__':
     
     async def webhook_handle(request):
         update = await request.json()
-        # Исправленная строка - используем aiogram types
         telegram_update = types.Update(**update)
+        
+        # Устанавливаем текущий диспетчер
+        Dispatcher.set_current(dp)
+        Bot.set_current(bot)
+        
         await dp.process_update(telegram_update)
         return web.Response()
     
