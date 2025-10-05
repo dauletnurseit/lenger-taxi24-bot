@@ -431,9 +431,12 @@ if __name__ == '__main__':
     WEBAPP_HOST = '0.0.0.0'
     WEBAPP_PORT = int(os.getenv('PORT', 10000))
     
-    async def on_startup(app):
-        await bot.set_webhook(WEBHOOK_URL, drop_pending_updates=True)
-        print(f'Webhook set to {WEBHOOK_URL}')
+ async def on_startup(app):
+    # Инициализируем базу данных
+    await db.init_db()
+    
+    await bot.set_webhook(WEBHOOK_URL, drop_pending_updates=True)
+    print(f'Webhook set to {WEBHOOK_URL}')
     
     async def on_shutdown(app):
         await bot.delete_webhook()
