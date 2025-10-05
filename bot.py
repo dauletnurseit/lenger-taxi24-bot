@@ -413,17 +413,15 @@ async def my_orders(message: types.Message):
 # ---------------------
 # Запуск
 # ---------------------
-if __name__ == '__main__':
-    import os
-    from aiohttp import web
-    from aiogram import types
-    
+# ---------------------
+# Запуск
+# ---------------------
 if __name__ == '__main__':
     import os
     from aiohttp import web
     
     # Получаем URL вебхука из Render
-    WEBHOOK_HOST = os.getenv('RENDER_EXTERNAL_URL', 'https://your-app.onrender.com')
+    WEBHOOK_HOST = os.getenv('RENDER_EXTERNAL_URL', 'https://lenger-taxi24-bot.onrender.com')
     WEBHOOK_PATH = f'/webhook/{os.getenv("BOT_TOKEN").split(":")[1]}'
     WEBHOOK_URL = f"{WEBHOOK_HOST}{WEBHOOK_PATH}"
     
@@ -431,12 +429,12 @@ if __name__ == '__main__':
     WEBAPP_HOST = '0.0.0.0'
     WEBAPP_PORT = int(os.getenv('PORT', 10000))
     
- async def on_startup(app):
-    # Инициализируем базу данных
-    await db.init_db()
-    
-    await bot.set_webhook(WEBHOOK_URL, drop_pending_updates=True)
-    print(f'Webhook set to {WEBHOOK_URL}')
+    async def on_startup(app):
+        # Инициализируем базу данных
+        await db.init_db()
+        
+        await bot.set_webhook(WEBHOOK_URL, drop_pending_updates=True)
+        print(f'Webhook set to {WEBHOOK_URL}')
     
     async def on_shutdown(app):
         await bot.delete_webhook()
