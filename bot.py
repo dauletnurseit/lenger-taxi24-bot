@@ -436,7 +436,7 @@ if __name__ == '__main__':
         await bot.set_webhook(WEBHOOK_URL, drop_pending_updates=True)
         print(f'Webhook set to {WEBHOOK_URL}')
     
-    async def on_shutdown(app):
+    async def on_startup(app):
         await bot.delete_webhook()
     
     async def webhook_handle(request):
